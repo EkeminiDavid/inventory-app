@@ -44,6 +44,8 @@ def get_inventory():
     conn = db_connect()
     cursor = conn.cursor()
 
+    data = request.get_json()
+
     if request.method == 'GET':
         cursor.execute("SELECT * FROM inventory")
         inventory = [
@@ -59,12 +61,18 @@ def get_inventory():
     if request.method == 'POST':
         print("get post req")
         new_year = year #request.form['year']
-        new_product = request.form['product_name']
-        new_code = request.form['barcode']
-        new_measurement = request.form['measurement']
-        new_cost_price = request.form['cost_price']
-        new_selling_price = request.form['selling_price']
-        new_qty = request.form['quantity']
+        new_product = data['product_name']
+        new_code = data['barcode']
+        new_measurement = data['measurement']
+        new_cost_price = data['cost_price']
+        new_selling_price = data['selling_price']
+        new_qty = data['quantity']
+        # new_product = request.form['product_name']
+        # new_code = request.form['barcode']
+        # new_measurement = request.form['measurement']
+        # new_cost_price = request.form['cost_price']
+        # new_selling_price = request.form['selling_price']
+        # new_qty = request.form['quantity']
 
         sql = """INSERT INTO inventory(year, product_name, barcode, measurement, cost_price, selling_price, quantity) VALUES (%s,%s,%s,%s,%s,%s,%s)"""
         cursor.execute(sql, (new_year, new_product, new_code, new_measurement, new_cost_price, new_selling_price, new_qty))
@@ -76,6 +84,8 @@ def get_inventory():
 def single_inv(id):
     conn = db_connect()
     cursor = conn.cursor()
+    data = request.get_json()
+    
     inventory = None
 
     if request.method == 'GET':
@@ -101,12 +111,19 @@ def single_inv(id):
               WHERE id=%s
               """
         # year = year #request.form['year']
-        product_name = request.form['product_name']
-        barcode = request.form['barcode']
-        measurement = request.form['measurement']
-        cost_price = request.form['cost_price']
-        selling_price = request.form['selling_price']
-        quantity = request.form['quantity']
+        # product_name = request.form['product_name']
+        # barcode = request.form['barcode']
+        # measurement = request.form['measurement']
+        # cost_price = request.form['cost_price']
+        # selling_price = request.form['selling_price']
+        # quantity = request.form['quantity']
+
+        product_name = data['product_name']
+        barcode = data['barcode']
+        measurement = data['measurement']
+        cost_price = data['cost_price']
+        selling_price = data['selling_price']
+        quantity = data['quantity']
 
 
         updated_inv = {
@@ -214,15 +231,15 @@ def predict_quantity(product_name, month_num):
 @app.route('/predict_product_quantity', methods=['POST'])
 def predict_product_quantity():
     # if request.method == 'POST':
-    data = request.json
+    postedData = request.json
     # data =request.get_json(force=True)
 
-    if not data:
+    if not postedData:
         return jsonify({'error': 'Invalid or missing JSON data. Ensure Content-Type is application/json.'}), 400
 
     try:
-        product_name = data['product_name']
-        month_num = data['month_num']
+        product_name = postedData['product_name']
+        month_num = postedData['month_num']
     except KeyError as e:
         return jsonify({'error': f'Missing key: {str(e)}'}), 400
 
