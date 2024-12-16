@@ -1,5 +1,4 @@
 from flask import Flask, request, jsonify
-# import sqlite3
 import pymysql
 import datetime
 
@@ -44,7 +43,7 @@ def get_inventory():
     conn = db_connect()
     cursor = conn.cursor()
 
-    data = request.get_json()
+    postedData = request.get_json()
 
     if request.method == 'GET':
         cursor.execute("SELECT * FROM inventory")
@@ -54,37 +53,54 @@ def get_inventory():
                     quantity=row['quantity'])
                  for row in cursor.fetchall()
         ]
+
         if inventory is not None:
-            return jsonify(inventory)
+            returnMessage = {
+                'message': "Product List",
+                "status_code": 201,
+                "body": inventory
+                }
+        
+            return jsonify(returnMessage)
 
       
     if request.method == 'POST':
         print("get post req")
-        new_year = year #request.form['year']
-        new_product = data['product_name']
-        new_code = data['barcode']
-        new_measurement = data['measurement']
-        new_cost_price = data['cost_price']
-        new_selling_price = data['selling_price']
-        new_qty = data['quantity']
-        # new_product = request.form['product_name']
-        # new_code = request.form['barcode']
-        # new_measurement = request.form['measurement']
-        # new_cost_price = request.form['cost_price']
-        # new_selling_price = request.form['selling_price']
-        # new_qty = request.form['quantity']
+        new_year = year 
+        new_product = postedData['product_name']
+        new_code = postedData['barcode']
+        new_measurement = postedData['measurement']
+        new_cost_price = postedData['cost_price']
+        new_selling_price = postedData['selling_price']
+        new_qty = postedData['quantity']
+
 
         sql = """INSERT INTO inventory(year, product_name, barcode, measurement, cost_price, selling_price, quantity) VALUES (%s,%s,%s,%s,%s,%s,%s)"""
         cursor.execute(sql, (new_year, new_product, new_code, new_measurement, new_cost_price, new_selling_price, new_qty))
         conn.commit()
-        return f"Products with the id: {cursor.lastrowid} created succesfully", 201
+
+        returnMessage = {
+            'message': f"Products with the id: {cursor.lastrowid} created succesfully",
+            "status_code": 201,
+            "body": {
+                "year": new_year,
+                "barcode": new_code,
+                "cost_price": new_cost_price,
+                "measurement": new_measurement,
+                "product_name": new_product,
+                "quantity": new_qty,
+                "selling_price": new_selling_price
+            }
+        }
+
+        return jsonify(returnMessage)
         
 
 @app.route('/inventory/<int:id>', methods=['GET', 'PUT', 'DELETE'])
 def single_inv(id):
     conn = db_connect()
     cursor = conn.cursor()
-    data = request.get_json()
+    postedData = request.get_json()
     
     inventory = None
 
@@ -110,20 +126,13 @@ def single_inv(id):
               quantity=%s
               WHERE id=%s
               """
-        # year = year #request.form['year']
-        # product_name = request.form['product_name']
-        # barcode = request.form['barcode']
-        # measurement = request.form['measurement']
-        # cost_price = request.form['cost_price']
-        # selling_price = request.form['selling_price']
-        # quantity = request.form['quantity']
-
-        product_name = data['product_name']
-        barcode = data['barcode']
-        measurement = data['measurement']
-        cost_price = data['cost_price']
-        selling_price = data['selling_price']
-        quantity = data['quantity']
+    
+        product_name = postedData['product_name']
+        barcode = postedData['barcode']
+        measurement = postedData['measurement']
+        cost_price = postedData['cost_price']
+        selling_price = postedData['selling_price']
+        quantity = postedData['quantity']
 
 
         updated_inv = {
@@ -140,14 +149,27 @@ def single_inv(id):
         conn.commit()
 
         return jsonify(updated_inv)
+    
     # Delete item
     if request.method == 'DELETE':
         sql = """ DELETE FROM inventory WHERE id=%s"""
         cursor.execute(sql, (id,))
         conn.commit()
-        return "The product with id: {} has been deleted.".format(id), 200
 
-
+        returnMessage = {
+            "message": "The product with id: {} has been deleted.".format(id),
+            "status_code": 200,
+            "body": {
+            'id': id,
+            'year': year,
+            'product_name': product_name,
+            'barcode': barcode,
+            'measurement': measurement,
+            'cost_price': cost_price,
+            'selling_price': selling_price,
+            'quantity': quantity}
+        }
+        return jsonify(returnMessage)
 
 
 # Fetch data from the database
@@ -163,7 +185,7 @@ def load_data():
     
     connection_string = f'mysql+pymysql://{username}:{password}@{host}:{port}/{database}'
 
-# Create an engine using SQLAlchemy
+    # Create an engine using SQLAlchemy
     engine = create_engine(connection_string)
     query = 'SELECT product_name, year, quantity FROM inventory'
     # cursor.execute(query)
@@ -172,6 +194,15 @@ def load_data():
     # conn.close()
     return df
 
+
+
+
+"""
+    ''''''''''''''''''''''''
+    Creating  the model and prediction endpoint
+    ''''''''''''''''''''''''
+
+"""
 # Load data from the SQL database
 data = load_data()
 
@@ -186,9 +217,6 @@ data['month_num'] = data['month'].dt.month
 le = LabelEncoder()
 data['product_name_encoded'] = le.fit_transform(data['product_name'])
 
-import pickle
-# with open('label_encoder.pkl', 'wb') as f:
-#     pickle.dump(le, f)
 
 # Impute missing values in 'month_num' and 'product_name_encoded' columns
 imputer = SimpleImputer(strategy='mean')  # You can use other strategies like 'median' or 'most_frequent'
@@ -228,6 +256,7 @@ def predict_quantity(product_name, month_num):
     prediction = model.predict(input_data)
     return max(0, int(prediction[0])) # Ensure non-negative prediction
 
+
 @app.route('/predict_product_quantity', methods=['POST'])
 def predict_product_quantity():
     # if request.method == 'POST':
@@ -235,13 +264,27 @@ def predict_product_quantity():
     # data =request.get_json(force=True)
 
     if not postedData:
-        return jsonify({'error': 'Invalid or missing JSON data. Ensure Content-Type is application/json.'}), 400
 
+        returnMessage = {
+            "message": {'error': 'Invalid or missing JSON data. Ensure Content-Type is application/json.'},
+            "status_code": 400,
+            "body": np.nan,
+        
+        }
+        return jsonify(returnMessage)
+    
     try:
         product_name = postedData['product_name']
         month_num = postedData['month_num']
+
     except KeyError as e:
-        return jsonify({'error': f'Missing key: {str(e)}'}), 400
+        returnMessage = {
+            "message": f'Missing key: {str(e)}',
+            "status_code": 400,
+            "body": np.nan,
+        }
+
+        return jsonify(returnMessage)
 
     try:
         
@@ -250,9 +293,14 @@ def predict_product_quantity():
         return jsonify({'product_name': product_name, 'predicted_quantity': predicted_quantity})
 
     except Exception as e:
+        returnMessage = {
+            "message": f'Missing key: {str(e)}',
+            "status_code": 500,
+            "body": np.nan,
+        }
 
-        return jsonify({'error': str(e)}), 500
-
+        return jsonify(returnMessage)
+    
 # id,name,category,quantity,price,supplier
 if __name__ == '__main__':
     app.run(debug=True)
