@@ -264,6 +264,10 @@ def predict_quantity(product_name, month_num):
 @app.route('/predict_quantity', methods=['POST'])
 def predict_product_quantity():
     # if request.method == 'POST':
+    month_name = {1: 'January', 2:"February", 3:'March', 4:'April', 5:'May', 6:'June', 7:'July', 8:'August', 9:'September', 10:'October',\
+                  11:'November', 12:'December' }
+    
+    # print(month_name[month_num])
     data = request.json
     # data =request.get_json(force=True)
 
@@ -273,6 +277,7 @@ def predict_product_quantity():
             'status_code': 400,
             'body': {'error': 'Invalid or missing JSON data. Ensure Content-Type is application/json.'}
         }
+
         return jsonify(returnMessage)
 
     try:
@@ -298,9 +303,9 @@ def predict_product_quantity():
         # Call the prediction function with encoded product name
         predicted_quantity = predict_quantity(product_name, month_num)
         returnMessage = {
-            'message': f'Predicted quantity for month {month_num}',
+            'message': f'Predicted quantity for month {month_name[int(month_num)]}',
             'status_code': 500,
-            'body': {'product_name': product_name, 'predicted_quantity': predicted_quantity}
+            'body': f"Expected sales for the month of {month_name[int(month_num)]} is {predicted_quantity}"
         }
         return jsonify(returnMessage)
 
