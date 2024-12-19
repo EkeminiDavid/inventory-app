@@ -245,9 +245,6 @@ data['month_num'] = data['month'].dt.month
 le = LabelEncoder()
 data['product_name_encoded'] = le.fit_transform(data['product_name'])
 
-import pickle
-# with open('label_encoder.pkl', 'wb') as f:
-#     pickle.dump(le, f)
 
 # Impute missing values in 'month_num' and 'product_name_encoded' columns
 imputer = SimpleImputer(strategy='mean')  # You can use other strategies like 'median' or 'most_frequent'
@@ -274,14 +271,12 @@ def predict_quantity(product_name, month_num):
     
 
     if product_name.lower() not in current_classes:
-        # print(le.classes_)
-        current_classes.append(product_name)
+        current_classes.append(product_name.lower())
         le.classes_ = np.array(current_classes)
 
 
  
-    # product_name_encoded = le.transform([product_name])[0]
-    product_name_encoded = le.transform([product_name])
+    product_name_encoded = le.transform([product_name.lower()])
             
     input_data = pd.DataFrame([[product_name_encoded, month_num]], columns=['product_name_encoded', 'month_num'])
     prediction = model.predict(input_data)
@@ -289,13 +284,10 @@ def predict_quantity(product_name, month_num):
 
 @app.route('/predict_quantity', methods=['POST'])
 def predict_product_quantity():
-    # if request.method == 'POST':
     month_name = {1: 'January', 2:"February", 3:'March', 4:'April', 5:'May', 6:'June', 7:'July', 8:'August', 9:'September', 10:'October',\
                   11:'November', 12:'December' }
     
-    # print(month_name[month_num])
     data = request.json
-    # data =request.get_json(force=True)
 
     if not data:
         returnMessage = {
@@ -313,8 +305,7 @@ def predict_product_quantity():
     
 
         if product_name.lower() not in current_classes:
-            # print(le.classes_)
-            current_classes.append(product_name)
+            current_classes.append(product_name.lower())
             le.classes_ = np.array(current_classes)
     except KeyError as e:
         returnMessage = {
@@ -327,7 +318,7 @@ def predict_product_quantity():
     try:
         
         # Call the prediction function with encoded product name
-        predicted_quantity = predict_quantity(product_name, month_num)
+        predicted_quantity = predict_quantity(product_name.lower(), month_num)
         returnMessage = {
             'message': f'Predicted quantity for month {month_name[int(month_num)]}',
             'status_code': 500,
@@ -343,6 +334,6 @@ def predict_product_quantity():
         }
         return jsonify(returnMessage)
 
-# id,name,category,quantity,price,supplier
+
 if __name__ == '__main__':
     app.run(debug=True)
