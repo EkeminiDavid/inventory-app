@@ -38,6 +38,35 @@ def db_connect():
       print(e)
   return conn
 
+@app.route('/total_product', methods=['GET'])
+def total_product():
+    conn = db_connect()
+    cursor = conn.cursor()
+
+    # if request.method == 'GET':
+    try:
+        cursor.execute("SELECT COUNT(id) AS total_product FROM inventory")
+        count = cursor.fetchone()
+        returnMessage = {
+                'message': "Total product",
+                'status_code': 200,
+                'body': count
+            }
+        return jsonify(count)
+
+    except Exception as e:
+        returnMessage = {
+                'message': "error",
+                'status_code': 500,
+                'body': {"error": str(e)}
+            }
+        return jsonify(returnMessage)
+
+    finally:
+        cursor.close()
+        conn.close()
+
+
 
 @app.route('/inventory', methods=['GET', 'POST'])
 def get_inventory():
@@ -45,7 +74,13 @@ def get_inventory():
     cursor = conn.cursor()
 
     if request.method == 'GET':
-        cursor.execute("SELECT * FROM inventory")
+        # cursor.execute("SELECT * FROM inventory")
+        cursor.execute(""" SELECT id, year, product_name, \
+                       barcode, measurement, cost_price, \
+                       selling_price, SUM(quantity) AS quantity\
+                        FROM inventory
+                       GROUP BY product_name
+                       """)
         inventory = [
             dict(id=row['id'], year=row['year'], product_name=row['product_name'], barcode=row['barcode'],\
                  measurement=row['measurement'], cost_price=row['cost_price'], selling_price=row['selling_price'],\
@@ -90,7 +125,6 @@ def get_inventory():
         }
 
         return jsonify(returnMessage)
-        # return f"Products with the id: {cursor.lastrowid} created succesfully", 201
         
 
 @app.route('/inventory/<int:id>', methods=['GET', 'PUT', 'DELETE'])
@@ -132,14 +166,6 @@ def single_inv(id):
               quantity=%s
               WHERE id=%s
               """
-        # year = year #request.form['year']
-        # product_name = request.form['product_name']
-        # barcode = request.form['barcode']
-        # measurement = request.form['measurement']
-        # cost_price = request.form['cost_price']
-        # selling_price = request.form['selling_price']
-        # quantity = request.form['quantity']
-
         product_name = postData['product_name']
         barcode = postData['barcode']
         measurement = postData['measurement']

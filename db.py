@@ -28,37 +28,37 @@ create_inventory_table = """
         """
 
 
-create_product_table = """
-        CREATE TABLE products (
-        productID integer PRIMARY KEY,
-        product_name text NOT NULL,
-        date_added datetime default TIMESTAMPP,
-        barcode text NOT NULL
-        ) AUTO_INCREMENT = 1000
-        """
+# create_product_table = """
+#         CREATE TABLE products (
+#         productID integer PRIMARY KEY,
+#         product_name text NOT NULL,
+#         date_added datetime default TIMESTAMPP,
+#         barcode text NOT NULL
+#         ) AUTO_INCREMENT = 1000
+#         """
 
-create_sales_table = """
-                    CREATE TABLE sales (
-                    salesID integer PRIMARY KEY AUTO_INCREMENT,
-                    productID integer NOT NULL, 
-                    date_sold date DEFAULT TIMESTAMP,
-                    price float NOT NULL
-                    )
-                    """ 
+# create_sales_table = """
+#                     CREATE TABLE sales (
+#                     salesID integer PRIMARY KEY AUTO_INCREMENT,
+#                     productID integer NOT NULL, 
+#                     date_sold date DEFAULT TIMESTAMP,
+#                     price float NOT NULL
+#                     )
+#                     """ 
 
-create_predict_table = """
-                        CREATE TABLE predicted (
-                        id integer PRIMARY KEY AUTO_INCREMENT,
-                        productID integer NOT NULL,
-                        product_name text NOT NULL,
-                        predicted_quantity integer NOT NULL
-                        )    
-                    """
-query = [create_inventory_table, create_product_table, create_sales_table, create_predict_table]
-for query in queries:
+# create_predict_table = """
+#                         CREATE TABLE predicted (
+#                         id integer PRIMARY KEY AUTO_INCREMENT,
+#                         productID integer NOT NULL,
+#                         product_name text NOT NULL,
+#                         predicted_quantity integer NOT NULL
+#                         )    
+#                     """
+# query = [create_inventory_table, create_product_table, create_sales_table, create_predict_table]
+# for query in queries:
     
-    cursor.execute(query)
-    conn.close()
+cursor.execute(create_inventory_table)
+conn.close()
 
 # conn = sqlite3.connect('inventory.sqlite')
 
