@@ -126,6 +126,61 @@ def get_inventory():
 
         return jsonify(returnMessage)
         
+@app.route('/make_sales', methods=['GET', 'POST'])
+def make_sales():
+    conn = db_connect()
+    cursor = conn.cursor()
+    sales = None
+
+    if request.method == 'GET':
+        cursor.execute("SELECT * FROM sales")
+        # rows = cursor.fetchall()
+
+        sales = [
+            dict(salesID=row['salesID'], inventoryID=row['inventoryID'], product_name=row['product_name'], date_sold=row['date_sold'], \
+                 amount=row['amount'], measurement=row['measurement'], quantity_sold=row['quantity_sold'])
+                    for row in cursor.fetchall()
+        ]
+        
+        if sales is not None:
+            returnMessage = {
+                'message': "Sales history",
+                'status_code': 200,
+                'body': sales
+            }
+            return jsonify(returnMessage)
+        
+
+    postData = request.get_json()
+    if request.method == 'POST':
+        print("get post req")
+        new_date_sold = year 
+        new_name = postData['product_name']
+        new_inventoryID = postData['inventoryID']
+        new_measurement = postData['measurement']
+        new_amount = postData['amount']
+        new_qty = postData['quantity_sold']
+
+        sql = """INSERT INTO sales(date_sold, product_name, inventoryID, measurement, amount, quantity_sold) VALUES (%s,%s,%s,%s,%s,%s)"""
+        cursor.execute(sql, (new_date_sold, new_name, new_inventoryID, new_measurement, new_amount,  new_qty))
+        conn.commit()
+
+        returnMessage = {
+            'message': f"Products with the id: {cursor.lastrowid} created succesfully",
+            "status_code": 200,
+            "body": {
+                "year": new_date_sold,
+                "Amount": new_amount,
+                "measurement": new_measurement,
+                "product_name": new_name,
+                "quantity_sold": new_qty,
+                'inventoryID': new_inventoryID
+            }
+        }
+
+        return jsonify(returnMessage)            
+
+
 
 @app.route('/inventory/<int:id>', methods=['GET', 'PUT', 'DELETE'])
 def single_inv(id):
@@ -263,29 +318,58 @@ model.fit(X_train, y_train)
 # Evaluate the model
 y_pred = model.predict(X_test)
 mse = mean_squared_error(y_test, y_pred)
+from datetime import datetime, timedelta
+import pandas as pd
+import numpy as np
 
+def get_week_number(date):
+    """Get the week number (1-52/53) for a given date"""
+    return int(date.strftime('%V'))
 
-#Predict product quantity
-def predict_quantity(product_name, month_num):
+def predict_quantity(product_name, start_date, end_date):
     current_classes = list(le.classes_)
     
-
     if product_name.lower() not in current_classes:
         current_classes.append(product_name.lower())
         le.classes_ = np.array(current_classes)
-
-
- 
+    
     product_name_encoded = le.transform([product_name.lower()])
+    predictions = {}
+    
+    # Convert start_date and end_date to datetime objects if they're strings
+    if isinstance(start_date, str):
+        start_date = datetime.strptime(start_date, '%Y-%m-%d')
+    if isinstance(end_date, str):
+        end_date = datetime.strptime(end_date, '%Y-%m-%d')
+    
+    # Generate dates for each day in the range
+    current_date = start_date
+    while current_date <= end_date:
+        month_num = current_date.month
+        week_num = get_week_number(current_date)
+        
+        # Create a unique key for the week
+        date_key = f"{current_date.year}-W{week_num:02d}"
+        
+        if date_key not in predictions:
+            # Make prediction for this month (you might want to adjust the model
+            # to take week numbers into account for more precise predictions)
+            input_data = pd.DataFrame([[product_name_encoded[0], month_num]], 
+                                    columns=['product_name_encoded', 'month_num'])
+            prediction = model.predict(input_data)
             
-    input_data = pd.DataFrame([[product_name_encoded, month_num]], columns=['product_name_encoded', 'month_num'])
-    prediction = model.predict(input_data)
-    return max(0, int(prediction[0])) # Ensure non-negative prediction
+            # For weekly predictions, divide monthly prediction by ~4.345 weeks per month
+            weekly_prediction = max(0, int(prediction[0] / 4.345))
+            predictions[date_key] = weekly_prediction
+        
+        current_date += timedelta(days=7)  # Move to next week
+        
+    return predictions
 
 @app.route('/predict_quantity', methods=['POST'])
 def predict_product_quantity():
-    month_name = {1: 'January', 2:"February", 3:'March', 4:'April', 5:'May', 6:'June', 7:'July', 8:'August', 9:'September', 10:'October',\
-                  11:'November', 12:'December' }
+    month_name = {1: 'January', 2:"February", 3:'March', 4:'April', 5:'May', 6:'June', 
+                 7:'July', 8:'August', 9:'September', 10:'October', 11:'November', 12:'December'}
     
     data = request.json
 
@@ -295,18 +379,35 @@ def predict_product_quantity():
             'status_code': 400,
             'body': {'error': 'Invalid or missing JSON data. Ensure Content-Type is application/json.'}
         }
-
         return jsonify(returnMessage)
-
+ 
     try:
+        # Get required parameters
         product_name = data['product_name']
-        month_num = data['month_num']
-        current_classes = list(le.classes_)
-    
-
-        if product_name.lower() not in current_classes:
-            current_classes.append(product_name.lower())
-            le.classes_ = np.array(current_classes)
+        start_date = data['start_date']  # Format: YYYY-MM-DD
+        end_date = data['end_date']      # Format: YYYY-MM-DD
+        
+        # Validate dates
+        try:
+            start = datetime.strptime(start_date, '%Y-%m-%d')
+            end = datetime.strptime(end_date, '%Y-%m-%d')
+            
+            if start > end:
+                raise ValueError("Start date must be before end date")
+                
+            # Optional: Add validation for maximum date range
+            max_days = 365  # Example: limit to 1 year
+            if (end - start).days > max_days:
+                raise ValueError(f"Date range cannot exceed {max_days} days")
+                
+        except ValueError as e:
+            returnMessage = {
+                'message': 'error: invalid date format or range',
+                'status_code': 400,
+                'body': str(e)
+            }
+            return jsonify(returnMessage)
+            
     except KeyError as e:
         returnMessage = {
             'message': 'error: ',
@@ -316,13 +417,25 @@ def predict_product_quantity():
         return jsonify(returnMessage)
 
     try:
+        # Get predictions for the date range
+        predictions = predict_quantity(product_name.lower(), start_date, end_date)
         
-        # Call the prediction function with encoded product name
-        predicted_quantity = predict_quantity(product_name.lower(), month_num)
+        # Format the response
+        formatted_response = {
+            'predictions': predictions,
+            'metadata': {
+                'product': product_name,
+                'start_date': start_date,
+                'end_date': end_date,
+                'total_weeks': len(predictions),
+                'total_predicted_quantity': sum(predictions.values())
+            }
+        }
+        
         returnMessage = {
-            'message': f'Predicted quantity for month {month_name[int(month_num)]}',
-            'status_code': 500,
-            'body': f"Expected sales for the month of {month_name[int(month_num)]} is {predicted_quantity}"
+            'message': 'Weekly predictions generated successfully',
+            'status_code': 200,
+            'body': formatted_response
         }
         return jsonify(returnMessage)
 
@@ -330,10 +443,9 @@ def predict_product_quantity():
         returnMessage = {
             'message': 'error: ',
             'status_code': 500,
-            'body': f'Missing key: {str(e)}'
+            'body': f'Prediction error: {str(e)}'
         }
         return jsonify(returnMessage)
-
 
 if __name__ == '__main__':
     app.run(debug=True)

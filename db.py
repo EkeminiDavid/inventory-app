@@ -18,22 +18,35 @@ create_inventory_table = """
         CREATE TABLE inventory (
         id integer PRIMARY KEY AUTO_INCREMENT,
         year date NOT NULL,
-        product_name text NOT NULL,
-        barcode text NOT NULL,
-        measurement text NOT NULL, 
+        product_name varchar(200) NOT NULL,
+        barcode varchar(100) NOT NULL UNIQUE,
+        measurement varchar(100) NOT NULL, 
         cost_price float NOT NULL,
         selling_price float NOT NULL, 
         quantity integer NOT NULL
         )
         """
 
+# create_all_record_table = """
+#         CREATE TABLE all_record (
+#         id integer PRIMARY KEY AUTO_INCREMENT,
+#         year datetime NOT NULL DEFAULT TIMESTAMP,
+#         product_name text NOT NULL,
+#         barcode text NOT NULL UNIQUE,
+#         measurement text NOT NULL, 
+#         cost_price float NOT NULL,
+#         selling_price float NOT NULL, 
+#         quantity integer NOT NULL
+#         )
+#         """
 
 # create_product_table = """
 #         CREATE TABLE products (
 #         productID integer PRIMARY KEY,
 #         product_name text NOT NULL,
+#         measurement text NOT NULL, 
 #         date_added datetime default TIMESTAMPP,
-#         barcode text NOT NULL
+#         barcode text NOT NULL UNIQUE
 #         ) AUTO_INCREMENT = 1000
 #         """
 
@@ -54,11 +67,64 @@ create_inventory_table = """
 #                         predicted_quantity integer NOT NULL
 #                         )    
 #                     """
-# query = [create_inventory_table, create_product_table, create_sales_table, create_predict_table]
-# for query in queries:
-    
-cursor.execute(create_inventory_table)
+
+
+# products_table = """
+#             CREATE TABLE products (
+#     productID INT AUTO_INCREMENT PRIMARY KEY,
+#     product_name VARCHAR(255) NOT NULL,
+#     barcode VARCHAR(100) UNIQUE NOT NULL,
+#     date_added DATETIME DEFAULT CURRENT_TIMESTAMP
+#     ) AUTO_INCREMENT = 1000
+
+#     """
+
+
+# records_table = """CREATE TABLE inventory (
+#             inventoryID INT AUTO_INCREMENT PRIMARY KEY,
+#             productID INT NOT NULL,
+#             year DATE NOT NULL,
+#             measurement VARCHAR(100) NOT NULL,
+#             cost_price FLOAT NOT NULL,
+#             selling_price FLOAT NOT NULL,
+#             quantity INT NOT NULL,
+#             FOREIGN KEY (productID) REFERENCES products(productID) ON DELETE CASCADE
+#         )"""
+
+sales_table = """
+            CREATE TABLE sales (
+                salesID INT AUTO_INCREMENT PRIMARY KEY,
+                inventoryID INT NOT NULL,
+                product_name varchar(100) NOT NULL,
+                date_sold DATETIME,
+                measurement TEXT NOT NULL,
+                amount FLOAT NOT NULL,
+                quantity_sold INT NOT NULL
+            ) AUTO_INCREMENT = 1000
+
+            """
+cursor.execute(sales_table)
 conn.close()
+# salesID, PRODUCTID, product_name, qty_sold, total_amount 
+# FOREIGN KEY (productID) REFERENCES inventory(id) ON DELETE SET NULL
+
+# predictions_table = """CREATE TABLE predictions (
+#                         predictionID INT AUTO_INCREMENT PRIMARY KEY,
+#                         productID INT NOT NULL,
+#                         predicted_quantity INT NOT NULL,
+#                         prediction_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+#                         FOREIGN KEY (productID) REFERENCES products(productID) ON DELETE CASCADE
+#                     )
+                    
+#                     """
+
+
+# query = [create_all_record_table, create_product_table, create_sales_table, create_predict_table]
+# queries = [products_table, records_table, sales_table, predictions_table]
+# tbls = [create_inventory_table, sales_table]
+# for query in tbls:
+#     cursor.execute(query)
+# conn.close()
 
 # conn = sqlite3.connect('inventory.sqlite')
 
