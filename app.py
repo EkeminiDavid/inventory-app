@@ -476,19 +476,19 @@ def get_inventory():
 #             conn.close()
 
 
-from flask import Flask, request, jsonify
-import pymysql
+# from flask import Flask, request, jsonify
+# import pymysql
 
-app = Flask(__name__)
+# app = Flask(__name__)
 
-def db_connect():
-    return pymysql.connect(
-        host='localhost',
-        user='root',
-        password='password',
-        database='sales_db',
-        cursorclass=pymysql.cursors.DictCursor
-    )
+# def db_connect():
+#     return pymysql.connect(
+#         host='localhost',
+#         user='root',
+#         password='password',
+#         database='sales_db',
+#         cursorclass=pymysql.cursors.DictCursor
+#     )
 
 @app.route('/make_sales', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def make_sales():
