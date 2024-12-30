@@ -97,11 +97,11 @@ sales_table = """
                 inventoryID INT NOT NULL,
                 product_name varchar(100) NOT NULL,
                 date_sold DATETIME,
-                measurement TEXT NOT NULL,
                 amount FLOAT NOT NULL,
-                quantity_sold INT NOT NULL
-            ) AUTO_INCREMENT = 1000
+                quantity_sold INT NOT NULL,
 
+                FOREIGN KEY (inventoryID) REFERENCES inventory(id)
+            ) AUTO_INCREMENT = 1000
             """
 cursor.execute(sales_table)
 conn.close()
