@@ -103,7 +103,21 @@ sales_table = """
                 FOREIGN KEY (inventoryID) REFERENCES inventory(id)
             ) AUTO_INCREMENT = 1000
             """
-cursor.execute(sales_table)
+
+
+sales_items_table = """
+                    CREATE TABLE sales_items (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    sales_id INT NOT NULL,
+                    inventory_id INT NOT NULL,
+                    quantity INT NOT NULL,
+                    amount DECIMAL(10, 2) NOT NULL,
+
+                    FOREIGN KEY (sales_id) REFERENCES sales(salesID),
+                    FOREIGN KEY (inventory_id) REFERENCES inventory(id)
+                )
+                    """
+cursor.execute(sales_items_table)
 conn.close()
 # salesID, PRODUCTID, product_name, qty_sold, total_amount 
 # FOREIGN KEY (productID) REFERENCES inventory(id) ON DELETE SET NULL
