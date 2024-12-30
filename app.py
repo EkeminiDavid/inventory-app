@@ -287,113 +287,187 @@ def get_inventory():
 #             cursor.close()
 #             conn.close()
 
+# @app.route('/make_sales', methods=['GET', 'POST', 'PUT', 'DELETE'])
+# def make_sales():
+#     """
+#     Sales API with inventory update for multiple items
+#     """
+#     conn = db_connect()
+#     cursor = conn.cursor()
+
+#     if request.method == 'GET':
+#         cursor.execute("SELECT * FROM sales")
+#         sales = [
+#             dict(salesID=row['salesID'], 
+#                  inventoryID=row['inventoryID'], 
+#                  product_name=row['product_name'], 
+#                  date_sold=row['date_sold'],
+#                  amount=row['amount'], 
+#                  quantity_sold=row['quantity_sold'])
+#             for row in cursor.fetchall()
+#         ]
+
+#         if sales is not None:
+#             returnMessage = {
+#                 'message': "Sales history",
+#                 'status_code': 200,
+#                 'body': sales
+#             }
+#             return jsonify(returnMessage)
+
+#     if request.method == 'POST':
+#         try:
+#             postData = request.get_json()
+#             total_amount = postData['total_amount']
+#             sales_items = postData['sales_item']
+
+#             # Start transaction
+#             conn.begin()
+
+#             sales_records = []
+#             for item in sales_items:
+#                 product_name = item['product_name']
+#                 product_id = item['product_id']
+#                 quantity = item['quantity']
+#                 amount = item['amount']
+
+#                 # Check if there's enough inventory
+#                 cursor.execute("""
+#                     SELECT quantity 
+#                     FROM inventory 
+#                     WHERE id = %s AND product_name = %s
+#                     """, (product_id, product_name))
+                
+#                 current_inventory = cursor.fetchone()
+                
+#                 if not current_inventory:
+#                     raise Exception(f"Product not found in inventory: {product_name}")
+                
+#                 if current_inventory['quantity'] < quantity:
+#                     raise Exception(f"Insufficient inventory for {product_name}. Available: {current_inventory['quantity']}, Requested: {quantity}")
+
+#                 # Insert into sales table
+#                 sql_sales = """
+#                     INSERT INTO sales
+#                     (date_sold, product_name, inventoryID, amount, quantity_sold) 
+#                     VALUES (%s, %s, %s, %s, %s)
+#                 """
+#                 cursor.execute(sql_sales, (year, product_name, product_id, amount, quantity))
+                
+#                 sale_id = cursor.lastrowid
+
+#                 # Update inventory quantity
+#                 sql_inventory = """
+#                     UPDATE inventory 
+#                     SET quantity = quantity - %s 
+#                     WHERE id = %s AND product_name = %s
+#                 """
+#                 cursor.execute(sql_inventory, (quantity, product_id, product_name))
+
+#                 # Store sale record for response
+#                 sales_records.append({
+#                     "sale_id": sale_id,
+#                     "product_name": product_name,
+#                     "quantity_sold": quantity,
+#                     "amount": amount,
+#                     "remaining_inventory": current_inventory['quantity'] - quantity
+#                 })
+
+#             # Commit transaction
+#             conn.commit()
+
+#             returnMessage = {
+#                 'message': "Sales recorded successfully",
+#                 "status_code": 200,
+#                 "body": {
+#                     "total_amount": total_amount,
+#                     "date_sold": year,
+#                     "sales_records": sales_records
+#                 }
+#             }
+#             return jsonify(returnMessage)
+
+#         except Exception as e:
+#             # Rollback in case of error
+#             conn.rollback()
+#             returnMessage = {
+#                 'message': "Error processing sales",
+#                 'status_code': 400,
+#                 'body': str(e)
+#             }
+#             return jsonify(returnMessage)
+
+#         finally:
+#             cursor.close()
+#             conn.close()
+
 @app.route('/make_sales', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def make_sales():
     """
     Sales API with inventory update for multiple items
     """
     conn = db_connect()
-    cursor = conn.cursor()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)  # Use DictCursor for dictionary results
 
     if request.method == 'GET':
-        cursor.execute("SELECT * FROM sales")
-        sales = [
-            dict(salesID=row['salesID'], 
-                 inventoryID=row['inventoryID'], 
-                 product_name=row['product_name'], 
-                 date_sold=row['date_sold'],
-                 amount=row['amount'], 
-                 quantity_sold=row['quantity_sold'])
-            for row in cursor.fetchall()
-        ]
-
-        if sales is not None:
-            returnMessage = {
-                'message': "Sales history",
-                'status_code': 200,
-                'body': sales
-            }
-            return jsonify(returnMessage)
-
-    if request.method == 'POST':
         try:
-            postData = request.get_json()
-            total_amount = postData['total_amount']
-            sales_items = postData['sales_item']
+            # Fetch all sales and join with inventory for detailed product info
+            cursor.execute("""
+                SELECT 
+                    s.salesID AS sales_id,
+                    s.date_sold AS sales_date,
+                    i.id AS product_id,
+                    i.product_name,
+                    i.barcode,
+                    i.measurement,
+                    i.cost_price,
+                    i.selling_price,
+                    i.quantity,
+                    i.year
+                FROM sales s
+                JOIN inventory i ON s.inventoryID = i.id
+            """)
+            sales_data = cursor.fetchall()
 
-            # Start transaction
-            conn.begin()
+            # Organize the data into the nested format
+            sales_history = {}
+            for row in sales_data:
+                sales_id = row['sales_id']
+                if sales_id not in sales_history:
+                    sales_history[sales_id] = {
+                        "sales_id": sales_id,
+                        "sales_date": row["sales_date"],
+                        "sales_item": []
+                    }
 
-            sales_records = []
-            for item in sales_items:
-                product_name = item['product_name']
-                product_id = item['product_id']
-                quantity = item['quantity']
-                amount = item['amount']
-
-                # Check if there's enough inventory
-                cursor.execute("""
-                    SELECT quantity 
-                    FROM inventory 
-                    WHERE id = %s AND product_name = %s
-                    """, (product_id, product_name))
-                
-                current_inventory = cursor.fetchone()
-                
-                if not current_inventory:
-                    raise Exception(f"Product not found in inventory: {product_name}")
-                
-                if current_inventory['quantity'] < quantity:
-                    raise Exception(f"Insufficient inventory for {product_name}. Available: {current_inventory['quantity']}, Requested: {quantity}")
-
-                # Insert into sales table
-                sql_sales = """
-                    INSERT INTO sales
-                    (date_sold, product_name, inventoryID, amount, quantity_sold) 
-                    VALUES (%s, %s, %s, %s, %s)
-                """
-                cursor.execute(sql_sales, (year, product_name, product_id, amount, quantity))
-                
-                sale_id = cursor.lastrowid
-
-                # Update inventory quantity
-                sql_inventory = """
-                    UPDATE inventory 
-                    SET quantity = quantity - %s 
-                    WHERE id = %s AND product_name = %s
-                """
-                cursor.execute(sql_inventory, (quantity, product_id, product_name))
-
-                # Store sale record for response
-                sales_records.append({
-                    "sale_id": sale_id,
-                    "product_name": product_name,
-                    "quantity_sold": quantity,
-                    "amount": amount,
-                    "remaining_inventory": current_inventory['quantity'] - quantity
+                # Add inventory item details
+                sales_history[sales_id]["sales_item"].append({
+                    "id": row["product_id"],
+                    "product_name": row["product_name"],
+                    "barcode": row["barcode"],
+                    "measurement": row["measurement"],
+                    "cost_price": row["cost_price"],
+                    "selling_price": row["selling_price"],
+                    "quantity": row["quantity"],
+                    "year": row["year"]
                 })
 
-            # Commit transaction
-            conn.commit()
+            # Convert sales_history dict to a list
+            sales_history_list = list(sales_history.values())
 
+            # Create the final response
             returnMessage = {
-                'message': "Sales recorded successfully",
+                "message": "Sales History",
                 "status_code": 200,
-                "body": {
-                    "total_amount": total_amount,
-                    "date_sold": year,
-                    "sales_records": sales_records
-                }
+                "body": sales_history_list
             }
             return jsonify(returnMessage)
 
         except Exception as e:
-            # Rollback in case of error
-            conn.rollback()
             returnMessage = {
-                'message': "Error processing sales",
-                'status_code': 400,
-                'body': str(e)
+                "message": "Error fetching sales history",
+                "status_code": 500,
+                "body": str(e)
             }
             return jsonify(returnMessage)
 
