@@ -93,15 +93,10 @@ create_inventory_table = """
 
 sales_table = """
             CREATE TABLE sales (
-                salesID INT AUTO_INCREMENT PRIMARY KEY,
-                inventoryID INT NOT NULL,
-                product_name varchar(100) NOT NULL,
-                date_sold DATETIME,
-                amount FLOAT NOT NULL,
-                quantity_sold INT NOT NULL,
-
-                FOREIGN KEY (inventoryID) REFERENCES inventory(id)
-            ) AUTO_INCREMENT = 1000
+            salesID VARCHAR(20) PRIMARY KEY, -- Alphanumeric ID
+            date_sold DATETIME NOT NULL,
+            total_amount FLOAT NOT NULL
+        )
             """
 
 
@@ -111,13 +106,24 @@ sales_items_table = """
                     sales_id INT NOT NULL,
                     inventory_id INT NOT NULL,
                     quantity INT NOT NULL,
-                    amount DECIMAL(10, 2) NOT NULL,
+                    amount FLOAT NOT NULL,
 
                     FOREIGN KEY (sales_id) REFERENCES sales(salesID),
                     FOREIGN KEY (inventory_id) REFERENCES inventory(id)
                 )
-                    """
-cursor.execute(sales_items_table)
+                """
+items = """
+            CREATE TABLE sales_items (
+    id VARCHAR(20) PRIMARY KEY, -- Alphanumeric ID
+    sales_id VARCHAR(20) NOT NULL,
+    inventory_id INT NOT NULL,
+    quantity INT NOT NULL,
+    amount FLOAT NOT NULL,
+    FOREIGN KEY (sales_id) REFERENCES sales(salesID) ON DELETE CASCADE,
+    FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE CASCADE
+)"""
+
+cursor.execute(items)
 conn.close()
 # salesID, PRODUCTID, product_name, qty_sold, total_amount 
 # FOREIGN KEY (productID) REFERENCES inventory(id) ON DELETE SET NULL
