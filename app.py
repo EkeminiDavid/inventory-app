@@ -166,7 +166,8 @@ def make_sales():
                 i.cost_price,
                 i.selling_price,
                 si.quantity AS quantity,
-                i.year
+                i.year,
+                s.total_amount
             FROM sales s
             JOIN sales_items si ON s.salesID = si.sales_id
             JOIN inventory i ON si.inventory_id = i.id
@@ -180,6 +181,7 @@ def make_sales():
                 grouped_sales[sales_id] = {
                     "sales_id": sales_id,
                     "sales_date": sale["sales_date"],
+                    "total_amount": sale["total_amount"],
                     "sales_item": []
                 }
             grouped_sales[sales_id]["sales_item"].append({
@@ -268,7 +270,8 @@ def make_sales():
                     i.cost_price,
                     i.selling_price,
                     si.quantity AS quantity,
-                    i.year
+                    i.year,
+                    s.total_amount
                 FROM sales_items si
                 JOIN inventory i ON si.inventory_id = i.id
                 JOIN sales s ON si.sales_id = s.salesID
@@ -279,6 +282,7 @@ def make_sales():
             sales_history = {
                 "sales_id": sale_id,
                 "sales_date": sales_details[0]["sales_date"] if sales_details else None,
+                "total_amount":sales_details[0]["total_amount"],
                 "sales_item": [
                     {
                         "id": item["id"],
@@ -449,6 +453,7 @@ model.fit(X_train, y_train)
 # Evaluate the model
 y_pred = model.predict(X_test)
 mse = mean_squared_error(y_test, y_pred)
+
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
