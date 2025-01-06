@@ -35,18 +35,6 @@ create_sales_table = """
             """
 
 
-# sales_items_table = """
-#                     CREATE TABLE sales_items (
-#                     id INT AUTO_INCREMENT PRIMARY KEY,
-#                     sales_id INT NOT NULL,
-#                     inventory_id INT NOT NULL,
-#                     quantity INT NOT NULL,
-#                     amount FLOAT NOT NULL,
-
-#                     FOREIGN KEY (sales_id) REFERENCES sales(salesID),
-#                     FOREIGN KEY (inventory_id) REFERENCES inventory(id)
-#                 )
-#                 """
 create_sales_items_table = """
             CREATE TABLE sales_items (
             id VARCHAR(20) PRIMARY KEY, -- Alphanumeric ID
@@ -57,6 +45,7 @@ create_sales_items_table = """
             FOREIGN KEY (sales_id) REFERENCES sales(salesID) ON DELETE CASCADE,
             FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE CASCADE
         )"""
+        
 queries = [create_inventory_table, create_sales_table, create_sales_items_table]
 
 

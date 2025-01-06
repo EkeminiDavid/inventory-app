@@ -1,5 +1,4 @@
 from flask import Flask, request, jsonify
-# import sqlite3
 import pymysql
 import datetime
 
@@ -38,6 +37,7 @@ def db_connect():
       print(e)
   return conn
 
+# Total product details
 @app.route('/total_product', methods=['GET'])
 def total_product():
     conn = db_connect()
@@ -67,13 +67,14 @@ def total_product():
         conn.close()
 
 
-
+# Inventory route
 @app.route('/inventory', methods=['GET', 'POST'])
 def get_inventory():
     conn = db_connect()
     cursor = conn.cursor()
 
     if request.method == 'GET':
+
         # cursor.execute("SELECT * FROM inventory")
         cursor.execute(""" SELECT id, year, product_name, \
                        barcode, measurement, cost_price, \
@@ -127,7 +128,7 @@ def get_inventory():
 
         return jsonify(returnMessage)
         
-
+# Make Sales Route
 @app.route('/make_sales', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def make_sales():
     """
