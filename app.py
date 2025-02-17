@@ -3,7 +3,7 @@ import pymysql
 from datetime import datetime, timedelta
 
 
-import datetime
+# import datetime
 
 import pandas as pd
 import numpy as np
@@ -16,7 +16,7 @@ from sqlalchemy import create_engine
 
 
 
-year = datetime.datetime.now().date()
+year = datetime.now().date()
 year = year.strftime("%Y-%m-%d")
 # print("Current Date:", current_date)
 
@@ -617,7 +617,7 @@ def predict_product_quantity():
                 seasonality_details[date_key] = {
                     "original_quantity": predicted_value,
                     "adjusted_quantity": adjusted_value,
-                    "applied_seasons": active_seasons
+                    "season": active_seasons
                 }
 
         # Format response
