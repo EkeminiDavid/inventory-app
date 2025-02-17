@@ -1,5 +1,8 @@
 from flask import Flask, request, jsonify
 import pymysql
+from datetime import datetime, timedelta
+
+
 import datetime
 
 import pandas as pd
@@ -10,6 +13,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import mean_squared_error
 from sqlalchemy import create_engine
+
 
 
 year = datetime.datetime.now().date()
@@ -78,14 +82,14 @@ def get_inventory():
         # cursor.execute("SELECT * FROM inventory")
         cursor.execute(""" SELECT id, year, product_name, \
                        barcode, measurement, cost_price, \
-                       selling_price, SUM(quantity) AS quantity\
+                       selling_price, customer_rating, SUM(quantity) AS quantity\
                         FROM inventory
                        GROUP BY product_name
                        """)
         inventory = [
             dict(id=row['id'], year=row['year'], product_name=row['product_name'], barcode=row['barcode'],\
                  measurement=row['measurement'], cost_price=row['cost_price'], selling_price=row['selling_price'],\
-                    quantity=row['quantity'])
+                    customer_rating=row['customer_rating'], quantity=row['quantity'])
                  for row in cursor.fetchall()
         ]
         if inventory is not None:
@@ -168,6 +172,7 @@ def make_sales():
                 i.selling_price,
                 si.quantity AS quantity,
                 i.year,
+                i.customer_rating,
                 s.total_amount
             FROM sales s
             JOIN sales_items si ON s.salesID = si.sales_id
@@ -193,6 +198,7 @@ def make_sales():
                 "cost_price": sale["cost_price"],
                 "selling_price": sale["selling_price"],
                 "quantity": sale["quantity"],
+                "customer_rating": sale["customer_rating"],
                 "year": sale["year"]
             })
 
@@ -272,6 +278,7 @@ def make_sales():
                     i.selling_price,
                     si.quantity AS quantity,
                     i.year,
+                    i.customer_rating,
                     s.total_amount
                 FROM sales_items si
                 JOIN inventory i ON si.inventory_id = i.id
@@ -293,7 +300,8 @@ def make_sales():
                         "cost_price": item["cost_price"],
                         "selling_price": item["selling_price"],
                         "quantity": item["quantity"],
-                        "year": item["year"]
+                        "year": item["year"],
+                        'customer_rating': item['customer_rating'],
                     }
                     for item in sales_details
                 ]
@@ -317,7 +325,7 @@ def make_sales():
             conn.close()
 
            
-
+"""inventory:id"""
 @app.route('/inventory/<int:id>', methods=['GET', 'PUT', 'DELETE'])
 def single_inv(id):
     conn = db_connect()
@@ -455,134 +463,192 @@ model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 mse = mean_squared_error(y_test, y_pred)
 
-from datetime import datetime, timedelta
-import pandas as pd
-import numpy as np
+
 
 def get_week_number(date):
     """Get the week number (1-52/53) for a given date"""
     return int(date.strftime('%V'))
 
+
+
+# Define seasonality mapping
+SEASONALITY = {
+    "christmas": {"months": [12], "adjustment": 1.5},  # 50% increase in demand
+    "new_year": {"months": [1], "adjustment": 1.3},    # 30% increase
+    "easter": {"months": [3, 4], "adjustment": 1.4},   # 40% increase
+    "black_friday": {"months": [11], "adjustment": 1.7}, # 70% increase
+    "valentine": {"date": "02-14", "adjustment": 2.0}, # 100% increase on Feb 14
+    "normal": {"months": list(range(1, 13)), "adjustment": 1.0} # No change
+}
+
+def get_seasonal_adjustment(date):
+    """Determine the seasonal multiplier for a given date."""
+    date_str = date.strftime("%m-%d")  # Format as MM-DD
+    
+    # Check if it's a single-day event
+    for event, details in SEASONALITY.items():
+        if "date" in details and date_str == details["date"]:
+            return details["adjustment"]
+    
+    # Check if it's a month-based season
+    for event, details in SEASONALITY.items():
+        if "months" in details and date.month in details["months"]:
+            return details["adjustment"]
+    
+    return 1.0  # Default to normal season
+
 def predict_quantity(product_name, start_date, end_date):
     current_classes = list(le.classes_)
-    
+
     if product_name.lower() not in current_classes:
         current_classes.append(product_name.lower())
         le.classes_ = np.array(current_classes)
-    
+
     product_name_encoded = le.transform([product_name.lower()])
     predictions = {}
-    
+
     # Convert start_date and end_date to datetime objects if they're strings
     if isinstance(start_date, str):
         start_date = datetime.strptime(start_date, '%Y-%m-%d')
     if isinstance(end_date, str):
         end_date = datetime.strptime(end_date, '%Y-%m-%d')
-    
+
     # Generate dates for each day in the range
     current_date = start_date
     while current_date <= end_date:
         month_num = current_date.month
-        week_num = get_week_number(current_date)
-        
-        # Create a unique key for the week
-        date_key = f"{current_date.year}-W{week_num:02d}"
-        
+        week_num = current_date.strftime("%U")  # Week number
+        date_key = f"{current_date.year}-W{week_num}"
+
         if date_key not in predictions:
-            # Make prediction for this month (you might want to adjust the model
-            # to take week numbers into account for more precise predictions)
+            # Make prediction for this month
             input_data = pd.DataFrame([[product_name_encoded[0], month_num]], 
-                                    columns=['product_name_encoded', 'month_num'])
+                                      columns=['product_name_encoded', 'month_num'])
             prediction = model.predict(input_data)
+
+            # Adjust prediction based on seasonality
+            seasonal_multiplier = get_seasonal_adjustment(current_date)
+            adjusted_prediction = max(0, int(prediction[0] * seasonal_multiplier))
             
-            # For weekly predictions, divide monthly prediction by ~4.345 weeks per month
-            weekly_prediction = max(0, int(prediction[0] / 4.345))
-            predictions[date_key] = weekly_prediction
+            # Store the weekly prediction
+            predictions[date_key] = adjusted_prediction
         
         current_date += timedelta(days=7)  # Move to next week
-        
+
     return predictions
+
+
+# Define seasonality with event names and their multipliers
+SEASONAL_MULTIPLIERS = {
+    "Christmas": (12, 20, 12, 31, 1.5),   # Dec 20 - Dec 31 → 50% increase
+    "New Year": (1, 1, 1, 7, 1.3),        # Jan 1 - Jan 7 → 30% increase
+    "Valentine's Day": (2, 13, 2, 15, 2.0), # Feb 13 - Feb 15 → 100% increase
+    "Easter": (4, 10, 4, 17, 1.4),        # Approximate Easter period → 40% increase
+    "Back to School": (8, 20, 9, 10, 1.2),# Aug 20 - Sept 10 → 20% increase
+    "Ramadan": (3, 1, 3, 30, 1.3)         # Approximate Ramadan → 30% increase
+}
+
+def check_seasonal_multiplier(date):
+    """Returns the seasonal multiplier and season names for a given date."""
+    active_seasons = []
+    multiplier = 1.0  # Default (no seasonality)
+    
+    for season, (start_month, start_day, end_month, end_day, season_multiplier) in SEASONAL_MULTIPLIERS.items():
+        if (date.month == start_month and date.day >= start_day) or (date.month == end_month and date.day <= end_day):
+            active_seasons.append(season)
+            multiplier *= season_multiplier  # Apply multiplier
+            
+    return multiplier, active_seasons
 
 @app.route('/predict_quantity', methods=['POST'])
 def predict_product_quantity():
-    month_name = {1: 'January', 2:"February", 3:'March', 4:'April', 5:'May', 6:'June', 
-                 7:'July', 8:'August', 9:'September', 10:'October', 11:'November', 12:'December'}
-    
     data = request.json
 
     if not data:
-        returnMessage = {
-            'message': 'data not found',
+        return jsonify({
+            'message': 'Data not found',
             'status_code': 400,
             'body': {'error': 'Invalid or missing JSON data. Ensure Content-Type is application/json.'}
-        }
-        return jsonify(returnMessage)
- 
+        })
+
     try:
-        # Get required parameters
+        # Extract input parameters
         product_name = data['product_name']
         start_date = data['start_date']  # Format: YYYY-MM-DD
         end_date = data['end_date']      # Format: YYYY-MM-DD
-        
-        # Validate dates
+
+        # Validate date format
         try:
             start = datetime.strptime(start_date, '%Y-%m-%d')
             end = datetime.strptime(end_date, '%Y-%m-%d')
-            
             if start > end:
                 raise ValueError("Start date must be before end date")
-                
-            # Optional: Add validation for maximum date range
-            max_days = 365  
-            if (end - start).days > max_days:
-                raise ValueError(f"Date range cannot exceed {max_days} days")
-                
+            if (end - start).days > 365:
+                raise ValueError("Date range cannot exceed 365 days")
         except ValueError as e:
-            returnMessage = {
-                'message': 'error: invalid date format or range',
+            return jsonify({
+                'message': 'Error: Invalid date format or range',
                 'status_code': 400,
                 'body': str(e)
-            }
-            return jsonify(returnMessage)
-            
+            })
+
     except KeyError as e:
-        returnMessage = {
-            'message': 'error: ',
+        return jsonify({
+            'message': 'Error: Missing key',
             'status_code': 400,
             'body': f'Missing key: {str(e)}'
-        }
-        return jsonify(returnMessage)
+        })
 
     try:
-        # Get predictions for the date range
+        # Get weekly predictions
         predictions = predict_quantity(product_name.lower(), start_date, end_date)
-        
-        # Format the response
-        formatted_response = {
-            'predictions': predictions,
-            'metadata': {
-                'product': product_name,
-                'start_date': start_date,
-                'end_date': end_date,
-                'total_weeks': len(predictions),
-                'total_predicted_quantity': sum(predictions.values())
-            }
-        }
-        
-        returnMessage = {
-            'message': 'Weekly predictions generated successfully',
+
+        # Adjust predictions for seasonality
+        seasonal_predictions = {}
+        seasonality_details = {}
+
+        for date_key, predicted_value in predictions.items():
+            week_start_date = datetime.strptime(date_key + '-1', "%Y-W%W-%w")  # Convert week number to date
+            multiplier, active_seasons = check_seasonal_multiplier(week_start_date)
+            adjusted_value = int(predicted_value * multiplier)
+            
+            seasonal_predictions[date_key] = adjusted_value
+            if active_seasons:
+                seasonality_details[date_key] = {
+                    "original_quantity": predicted_value,
+                    "adjusted_quantity": adjusted_value,
+                    "applied_seasons": active_seasons
+                }
+
+        # Format response
+        return jsonify({
+            'message': 'Weekly predictions with seasonality applied',
             'status_code': 200,
-            'body': formatted_response
-        }
-        return jsonify(returnMessage)
+            'body': {
+                'predictions': seasonal_predictions,
+                'metadata': {
+                    'product': product_name,
+                    'start_date': start_date,
+                    'end_date': end_date,
+                    'total_weeks': len(predictions),
+                    'total_predicted_quantity': sum(seasonal_predictions.values()),
+                    'seasonality_effects': seasonality_details
+                }
+            }
+        })
 
     except Exception as e:
-        returnMessage = {
-            'message': 'error: ',
+        return jsonify({
+            'message': 'Error in prediction process',
             'status_code': 500,
             'body': f'Prediction error: {str(e)}'
-        }
-        return jsonify(returnMessage)
+        })
+
+# if __name__ == '__main__':
+#     app.run(debug=True)
+
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    print('check')
+    app.run(host = '127.0.0.1', port =5000, debug = True)
+    # app.run(debug=True)

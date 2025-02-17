@@ -46,10 +46,21 @@ create_sales_items_table = """
             FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE CASCADE
         )"""
         
+# alter and update customer rating column in inventory table
+alter_inventory = """ALTER TABLE inventory ADD COLUMN customer_rating FLOAT"""
+
+update_inventory = """UPDATE inventory 
+                        SET customer_rating = ROUND(RAND() * 4 + 1, 1)
+                        where id >= 1"""
+
+
 queries = [create_inventory_table, create_sales_table, create_sales_items_table]
 
 
 for query in queries:
     cursor.execute(query)
+
+
+cursor.execute(alter_inventory)
 
 conn.close()
