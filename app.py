@@ -450,7 +450,7 @@ data['product_name_encoded'] = le.fit_transform(data['product_name'])
 SEASONAL_MULTIPLIERS = {
     "Christmas": (12, 20, 12, 31, 1.5),
     "New Year": (1, 1, 1, 7, 1.3),
-    "Valentine's Day": (2, 13, 2, 15, 2.0),
+    "Valentine": (2, 13, 2, 15, 2.0),
     "Easter": (4, 10, 4, 17, 1.4),
     "Back to School": (8, 20, 9, 10, 1.2),
     "Ramadan": (3, 1, 3, 30, 1.3)
