@@ -22,7 +22,9 @@ create_inventory_table = """
         measurement varchar(100) NOT NULL, 
         cost_price float NOT NULL,
         selling_price float NOT NULL, 
-        quantity integer NOT NULL
+        quantity integer NOT NULL,
+        customer_rating float NOT NULL,
+        season varchar(100) NOT NULL
         )
         """
 
@@ -57,10 +59,10 @@ update_inventory = """UPDATE inventory
 queries = [create_inventory_table, create_sales_table, create_sales_items_table]
 
 
-for query in queries:
-    cursor.execute(query)
+# for query in queries:
+#     cursor.execute(query)
 
 
-cursor.execute(alter_inventory)
+cursor.execute(create_inventory_table)
 
 conn.close()

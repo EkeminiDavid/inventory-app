@@ -3,8 +3,6 @@ import pymysql
 from datetime import datetime, timedelta
 
 
-# import datetime
-
 import pandas as pd
 import numpy as np
 from sklearn.impute import SimpleImputer
@@ -13,6 +11,8 @@ from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import mean_squared_error
 from sqlalchemy import create_engine
+from sklearn.impute import SimpleImputer
+
 
 
 
@@ -82,14 +82,14 @@ def get_inventory():
         # cursor.execute("SELECT * FROM inventory")
         cursor.execute(""" SELECT id, year, product_name, \
                        barcode, measurement, cost_price, \
-                       selling_price, customer_rating, SUM(quantity) AS quantity\
+                       selling_price, customer_rating, season, SUM(quantity) AS quantity\
                         FROM inventory
                        GROUP BY product_name
                        """)
         inventory = [
             dict(id=row['id'], year=row['year'], product_name=row['product_name'], barcode=row['barcode'],\
                  measurement=row['measurement'], cost_price=row['cost_price'], selling_price=row['selling_price'],\
-                    customer_rating=row['customer_rating'], quantity=row['quantity'])
+                    customer_rating=row['customer_rating'], season=row['season'], quantity=row['quantity'])
                  for row in cursor.fetchall()
         ]
         if inventory is not None:
@@ -173,6 +173,7 @@ def make_sales():
                 si.quantity AS quantity,
                 i.year,
                 i.customer_rating,
+                i.season,
                 s.total_amount
             FROM sales s
             JOIN sales_items si ON s.salesID = si.sales_id
@@ -198,7 +199,9 @@ def make_sales():
                 "cost_price": sale["cost_price"],
                 "selling_price": sale["selling_price"],
                 "quantity": sale["quantity"],
+                "season": sale["season"],
                 "customer_rating": sale["customer_rating"],
+
                 "year": sale["year"]
             })
 
@@ -279,6 +282,7 @@ def make_sales():
                     si.quantity AS quantity,
                     i.year,
                     i.customer_rating,
+                    i.season,
                     s.total_amount
                 FROM sales_items si
                 JOIN inventory i ON si.inventory_id = i.id
@@ -302,6 +306,8 @@ def make_sales():
                         "quantity": item["quantity"],
                         "year": item["year"],
                         'customer_rating': item['customer_rating'],
+                        'season': item['season'],
+
                     }
                     for item in sales_details
                 ]
@@ -362,6 +368,8 @@ def single_inv(id):
               measurement=%s,
               cost_price=%s,
               selling_price=%s,
+              customer_rating=%s,
+              season=%s,
               quantity=%s
               WHERE id=%s
               """
@@ -371,6 +379,9 @@ def single_inv(id):
         cost_price = postData['cost_price']
         selling_price = postData['selling_price']
         quantity = postData['quantity']
+        customer_rating = postData['customer_rating']
+        season = postData['season']
+
 
 
         updated_inv = {
@@ -381,9 +392,11 @@ def single_inv(id):
             'measurement': measurement,
             'cost_price': cost_price,
             'selling_price': selling_price,
+            'customer_rating': customer_rating,
+            'season': season,
             'quantity': quantity
         }
-        cursor.execute(sql, (year,product_name, barcode, measurement, cost_price, selling_price, quantity, id))
+        cursor.execute(sql, (year,product_name, barcode, measurement, cost_price, selling_price, customer_rating, season, quantity, id))
         conn.commit()
         returnMessage = {
             'message': f"Updated item: {id}",
@@ -410,245 +423,178 @@ def single_inv(id):
 
 # Fetch data from the database
 def load_data():
-    
-    host="sql7.freesqldatabase.com"
-    database="sql7751294"
-    username="sql7751294"
-    password="IWWaeXWra2"
-    charset="utf8mb4"
-    cursorclass=pymysql.cursors.DictCursor
-    port=3306
+    host = "sql7.freesqldatabase.com"
+    database = "sql7751294"
+    username = "sql7751294"
+    password = "IWWaeXWra2"
+    port = 3306
     
     connection_string = f'mysql+pymysql://{username}:{password}@{host}:{port}/{database}'
-
-# Create an engine using SQLAlchemy
     engine = create_engine(connection_string)
-    query = 'SELECT product_name, year, quantity FROM inventory'
-    # cursor.execute(query)
-    
+    query = 'SELECT product_name, year, quantity, customer_rating FROM inventory'
     df = pd.read_sql(query, engine)
-    # conn.close()
     return df
 
 # Load data from the SQL database
 data = load_data()
 
-#lower all product name
 data['product_name'] = data['product_name'].apply(lambda x: x.lower())
-# Handle missing values (imputation or removal)
 data['month'] = pd.to_datetime(data['year'])
 data['month_num'] = data['month'].dt.month
 
-
-# Encode product names to numerical values
+# Encode product names
 le = LabelEncoder()
 data['product_name_encoded'] = le.fit_transform(data['product_name'])
 
+# Define seasonality mapping
+SEASONAL_MULTIPLIERS = {
+    "Christmas": (12, 20, 12, 31, 1.5),
+    "New Year": (1, 1, 1, 7, 1.3),
+    "Valentine's Day": (2, 13, 2, 15, 2.0),
+    "Easter": (4, 10, 4, 17, 1.4),
+    "Back to School": (8, 20, 9, 10, 1.2),
+    "Ramadan": (3, 1, 3, 30, 1.3)
+}
 
-# Impute missing values in 'month_num' and 'product_name_encoded' columns
-imputer = SimpleImputer(strategy='mean')  # You can use other strategies like 'median' or 'most_frequent'
-data[['month_num', 'product_name_encoded']] = imputer.fit_transform(data[['month_num', 'product_name_encoded']])
+# Encode seasonality
+season_labels = list(SEASONAL_MULTIPLIERS.keys())
+season_encoder = LabelEncoder()
+season_encoder.fit(season_labels)
+
+def get_season(date):
+    for season, (start_month, start_day, end_month, end_day, _) in SEASONAL_MULTIPLIERS.items():
+        if (date.month == start_month and date.day >= start_day) or (date.month == end_month and date.day <= end_day):
+            return season
+    return "Normal"
+
+
+# Ensure "Normal" is part of the season labels before transforming
+if "Normal" not in season_encoder.classes_:
+    season_encoder.classes_ = np.append(season_encoder.classes_, "Normal")
+
+data['seasons'] = data['month'].apply(get_season)
+data['season_encoded'] = season_encoder.transform(data['seasons'])
+
+# Handle missing values
+imputer = SimpleImputer(strategy='mean')
+data[['month_num', 'product_name_encoded', 'customer_rating', 'season_encoded']] = imputer.fit_transform(
+    data[['month_num', 'product_name_encoded', 'customer_rating', 'season_encoded']]
+)
 
 # Features and target variable
-X = data[['product_name_encoded', 'month_num']]
+X = data[['product_name_encoded', 'month_num', 'customer_rating', 'season_encoded']]
 y = data['quantity']
-# print(y.shape)
+
 # Train-test split
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 # Train the model
 model = LinearRegression()
 model.fit(X_train, y_train)
+
 # Evaluate the model
 y_pred = model.predict(X_test)
 mse = mean_squared_error(y_test, y_pred)
+@app.route('/predict_quantity', methods=['POST'])
+def predict_product_quantity():
+    data = request.json
+    if not data:
+        return jsonify({'message': 'Data not found', 'status_code': 400, 'body': {'error': 'Invalid or missing JSON data.'}})
+
+    try:
+        product_name = data['product_name']
+        start_date = data['start_date']
+        end_date = data['end_date']
+        customer_rating = float(data.get('customer_rating', 0.0))
+        season = data.get('season', "Normal")  # Get season from the request, default to "Normal"
+        
+        start = datetime.strptime(start_date, '%Y-%m-%d')
+        end = datetime.strptime(end_date, '%Y-%m-%d')
+        if start > end:
+            raise ValueError("Start date must be before end date")
+        if (end - start).days > 365:
+            raise ValueError("Date range cannot exceed 365 days")
+
+    except KeyError as e:
+        return jsonify({'message': 'Error: Missing key', 'status_code': 400, 'body': f'Missing key: {str(e)}'})
+
+    try:
+        predictions, seasonality_effects = predict_quantity(product_name.lower(), start_date, end_date, customer_rating, season)
+
+        # Compute the total predicted quantity and the total number of weeks
+        total_predicted_quantity = sum(predictions.values())
+        total_weeks = len(predictions)
+
+        # Return the response in the required format
+        return jsonify({
+            'message': 'Weekly predictions with seasonality applied',
+            'status_code': 200,
+            'body': {
+                'metadata': {
+                    'product': product_name,
+                    'start_date': start_date,
+                    'end_date': end_date,
+                    'total_predicted_quantity': total_predicted_quantity,
+                    'total_weeks': total_weeks,
+                    'seasonality_effects': seasonality_effects,
+                },
+                'predictions': predictions
+            }
+        })
+
+    except Exception as e:
+        return jsonify({'message': 'Error in prediction process', 'status_code': 500, 'body': f'Prediction error: {str(e)}'})
 
 
-
-def get_week_number(date):
-    """Get the week number (1-52/53) for a given date"""
-    return int(date.strftime('%V'))
-
-
-
-# Define seasonality mapping
-SEASONALITY = {
-    "christmas": {"months": [12], "adjustment": 1.5},  # 50% increase in demand
-    "new_year": {"months": [1], "adjustment": 1.3},    # 30% increase
-    "easter": {"months": [3, 4], "adjustment": 1.4},   # 40% increase
-    "black_friday": {"months": [11], "adjustment": 1.7}, # 70% increase
-    "valentine": {"date": "02-14", "adjustment": 2.0}, # 100% increase on Feb 14
-    "normal": {"months": list(range(1, 13)), "adjustment": 1.0} # No change
-}
-
-def get_seasonal_adjustment(date):
-    """Determine the seasonal multiplier for a given date."""
-    date_str = date.strftime("%m-%d")  # Format as MM-DD
-    
-    # Check if it's a single-day event
-    for event, details in SEASONALITY.items():
-        if "date" in details and date_str == details["date"]:
-            return details["adjustment"]
-    
-    # Check if it's a month-based season
-    for event, details in SEASONALITY.items():
-        if "months" in details and date.month in details["months"]:
-            return details["adjustment"]
-    
-    return 1.0  # Default to normal season
-
-def predict_quantity(product_name, start_date, end_date):
+def predict_quantity(product_name, start_date, end_date, customer_rating, season):
     current_classes = list(le.classes_)
 
     if product_name.lower() not in current_classes:
         current_classes.append(product_name.lower())
         le.classes_ = np.array(current_classes)
-
     product_name_encoded = le.transform([product_name.lower()])
     predictions = {}
+    seasonality_effects = {}
 
-    # Convert start_date and end_date to datetime objects if they're strings
+    # Ensure the provided season is valid
+    if season not in SEASONAL_MULTIPLIERS:
+        season = "Normal"  # Default to "Normal" if an invalid season is provided
+
     if isinstance(start_date, str):
         start_date = datetime.strptime(start_date, '%Y-%m-%d')
     if isinstance(end_date, str):
         end_date = datetime.strptime(end_date, '%Y-%m-%d')
 
-    # Generate dates for each day in the range
     current_date = start_date
     while current_date <= end_date:
         month_num = current_date.month
-        week_num = current_date.strftime("%U")  # Week number
+        week_num = current_date.strftime("%U")
+        season_encoded = season_encoder.transform([season])[0]
         date_key = f"{current_date.year}-W{week_num}"
 
         if date_key not in predictions:
-            # Make prediction for this month
-            input_data = pd.DataFrame([[product_name_encoded[0], month_num]], 
-                                      columns=['product_name_encoded', 'month_num'])
-            prediction = model.predict(input_data)
+            input_data = pd.DataFrame([[product_name_encoded[0], month_num, customer_rating, season_encoded]],
+                                      columns=['product_name_encoded', 'month_num', 'customer_rating', 'season_encoded'])
+            original_quantity = model.predict(input_data)
+            predicted_quantity = max(0, int(original_quantity[0]))
 
-            # Adjust prediction based on seasonality
-            seasonal_multiplier = get_seasonal_adjustment(current_date)
-            adjusted_prediction = max(0, int(prediction[0] * seasonal_multiplier))
-            
-            # Store the weekly prediction
-            predictions[date_key] = adjusted_prediction
-        
-        current_date += timedelta(days=7)  # Move to next week
+            # Apply seasonality multiplier to predicted quantity
+            seasonality_multiplier = SEASONAL_MULTIPLIERS.get(season, (1, 1, 1, 1, 1.0))[4]
+            predicted_quantity = predicted_quantity * seasonality_multiplier
 
-    return predictions
-
-
-# Define seasonality with event names and their multipliers
-SEASONAL_MULTIPLIERS = {
-    "Christmas": (12, 20, 12, 31, 1.5),   # Dec 20 - Dec 31 → 50% increase
-    "New Year": (1, 1, 1, 7, 1.3),        # Jan 1 - Jan 7 → 30% increase
-    "Valentine's Day": (2, 13, 2, 15, 2.0), # Feb 13 - Feb 15 → 100% increase
-    "Easter": (4, 10, 4, 17, 1.4),        # Approximate Easter period → 40% increase
-    "Back to School": (8, 20, 9, 10, 1.2),# Aug 20 - Sept 10 → 20% increase
-    "Ramadan": (3, 1, 3, 30, 1.3)         # Approximate Ramadan → 30% increase
-}
-
-def check_seasonal_multiplier(date):
-    """Returns the seasonal multiplier and season names for a given date."""
-    active_seasons = []
-    multiplier = 1.0  # Default (no seasonality)
-    
-    for season, (start_month, start_day, end_month, end_day, season_multiplier) in SEASONAL_MULTIPLIERS.items():
-        if (date.month == start_month and date.day >= start_day) or (date.month == end_month and date.day <= end_day):
-            active_seasons.append(season)
-            multiplier *= season_multiplier  # Apply multiplier
-            
-    return multiplier, active_seasons
-
-@app.route('/predict_quantity', methods=['POST'])
-def predict_product_quantity():
-    data = request.json
-
-    if not data:
-        return jsonify({
-            'message': 'Data not found',
-            'status_code': 400,
-            'body': {'error': 'Invalid or missing JSON data. Ensure Content-Type is application/json.'}
-        })
-
-    try:
-        # Extract input parameters
-        product_name = data['product_name']
-        start_date = data['start_date']  # Format: YYYY-MM-DD
-        end_date = data['end_date']      # Format: YYYY-MM-DD
-
-        # Validate date format
-        try:
-            start = datetime.strptime(start_date, '%Y-%m-%d')
-            end = datetime.strptime(end_date, '%Y-%m-%d')
-            if start > end:
-                raise ValueError("Start date must be before end date")
-            if (end - start).days > 365:
-                raise ValueError("Date range cannot exceed 365 days")
-        except ValueError as e:
-            return jsonify({
-                'message': 'Error: Invalid date format or range',
-                'status_code': 400,
-                'body': str(e)
-            })
-
-    except KeyError as e:
-        return jsonify({
-            'message': 'Error: Missing key',
-            'status_code': 400,
-            'body': f'Missing key: {str(e)}'
-        })
-
-    try:
-        # Get weekly predictions
-        predictions = predict_quantity(product_name.lower(), start_date, end_date)
-
-        # Adjust predictions for seasonality
-        seasonal_predictions = {}
-        seasonality_details = {}
-
-        for date_key, predicted_value in predictions.items():
-            week_start_date = datetime.strptime(date_key + '-1', "%Y-W%W-%w")  # Convert week number to date
-            multiplier, active_seasons = check_seasonal_multiplier(week_start_date)
-            adjusted_value = int(predicted_value * multiplier)
-            
-            seasonal_predictions[date_key] = adjusted_value
-            if active_seasons:
-                seasonality_details[date_key] = {
-                    "original_quantity": predicted_value,
-                    "adjusted_quantity": adjusted_value,
-                    "season": active_seasons
-                }
-
-        # Format response
-        return jsonify({
-            'message': 'Weekly predictions with seasonality applied',
-            'status_code': 200,
-            'body': {
-                'predictions': seasonal_predictions,
-                'metadata': {
-                    'product': product_name,
-                    'start_date': start_date,
-                    'end_date': end_date,
-                    'total_weeks': len(predictions),
-                    'total_predicted_quantity': sum(seasonal_predictions.values()),
-                    'seasonality_effects': seasonality_details
-                }
+            # Save seasonality effects
+            seasonality_effects[date_key] = {
+                "predicted_quantity": predicted_quantity,
+                "season": [season]
             }
-        })
 
-    except Exception as e:
-        return jsonify({
-            'message': 'Error in prediction process',
-            'status_code': 500,
-            'body': f'Prediction error: {str(e)}'
-        })
+            # Store the predicted quantity
+            predictions[date_key] = predicted_quantity
 
-# if __name__ == '__main__':
-#     app.run(debug=True)
+        current_date += timedelta(days=7)
 
+    return predictions, seasonality_effects
 
 if __name__ == '__main__':
-    print('check')
-    app.run(host = '127.0.0.1', port =5000, debug = True)
-    # app.run(debug=True)
+    # app.run(host = '127.0.0.1', port =5000, debug = True)
+    app.run(debug=True)
